@@ -1,0 +1,336 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   XPira Design System: "Cozy Craft" 
+   Warm, playful, handcrafted feeling
+   ============================================================================ */
+
+:root {
+  /* Primary palette - warm creams and parchment */
+  --color-bg-primary: #faf6f0;      /* Warm cream */
+  --color-bg-secondary: #f5ede0;    /* Parchment */
+  --color-bg-tertiary: #ebe3d5;     /* Aged paper */
+  --color-bg-card: #fffbf5;         /* Card white */
+  
+  /* Text colors */
+  --color-text-primary: #3d3428;    /* Warm dark brown */
+  --color-text-secondary: #6b5d4d;  /* Medium brown */
+  --color-text-muted: #9a8b7a;      /* Light brown */
+  --color-text-inverse: #fffbf5;    /* For dark backgrounds */
+  
+  /* Accent colors - nature inspired */
+  --color-accent-green: #7cb56b;    /* Soft leaf green */
+  --color-accent-green-dark: #5a9a4a;
+  --color-accent-orange: #e8a855;   /* Golden orange */
+  --color-accent-orange-dark: #d4923f;
+  --color-accent-coral: #e07b6b;    /* Warm coral */
+  --color-accent-teal: #5bb5a6;     /* Soft teal */
+  --color-accent-purple: #9b7bb5;   /* Gentle purple */
+  
+  /* Attribute colors (D&D) - warmer versions */
+  --color-attr-str: #e07b6b;        /* Coral red */
+  --color-attr-dex: #7cb56b;        /* Leaf green */
+  --color-attr-con: #e8a855;        /* Golden orange */
+  --color-attr-int: #5ba8c9;        /* Sky blue */
+  --color-attr-wis: #9b7bb5;        /* Gentle purple */
+  --color-attr-cha: #e8a0b5;        /* Soft pink */
+  
+  /* UI colors */
+  --color-border: #d4c9b8;          /* Warm border */
+  --color-border-focus: #7cb56b;    /* Focus state */
+  --color-shadow: rgba(61, 52, 40, 0.1);
+  
+  /* XP and progress */
+  --color-xp-bar: linear-gradient(90deg, #9b7bb5, #e8a0b5);
+  --color-success: #7cb56b;
+  --color-warning: #e8a855;
+  --color-error: #e07b6b;
+  
+  /* Fonts */
+  font-family: 'Nunito', 'Segoe UI', system-ui, sans-serif;
+  line-height: 1.6;
+  font-weight: 400;
+  
+  /* Default to light mode */
+  color: var(--color-text-primary);
+  background-color: var(--color-bg-primary);
+}
+
+/* Dark mode overrides for game scenes */
+.game-scene {
+  --color-bg-primary: #2a2520;
+  --color-bg-secondary: #3d352d;
+  --color-text-primary: #faf6f0;
+  --color-text-secondary: #d4c9b8;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ============================================================================
+   Layout Components
+   ============================================================================ */
+
+.game-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--color-bg-primary);
+}
+
+/* HUD overlay */
+.hud-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.hud-overlay > * {
+  pointer-events: auto;
+}
+
+/* ============================================================================
+   Card Styles - Cozy Craft aesthetic
+   ============================================================================ */
+
+.card {
+  background: var(--color-bg-card);
+  border: 2px solid var(--color-border);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 2px 8px var(--color-shadow);
+}
+
+.card-warm {
+  background: linear-gradient(135deg, #fffbf5 0%, #f5ede0 100%);
+  border: 2px solid var(--color-border);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 
+    0 2px 8px var(--color-shadow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+/* ============================================================================
+   Button Styles
+   ============================================================================ */
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--color-accent-green) 0%, var(--color-accent-green-dark) 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 24px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1), 0 4px 0 var(--color-accent-green-dark);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.15), 0 6px 0 var(--color-accent-green-dark);
+}
+
+.btn-primary:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1), 0 2px 0 var(--color-accent-green-dark);
+}
+
+.btn-secondary {
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
+  border: 2px solid var(--color-border);
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-secondary:hover {
+  border-color: var(--color-accent-green);
+  background: var(--color-bg-secondary);
+}
+
+/* ============================================================================
+   Speech & Dialogue (Game Scene - uses dark mode)
+   ============================================================================ */
+
+.speech-indicator {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(42, 37, 32, 0.95);
+  border: 3px solid var(--color-accent-green);
+  border-radius: 16px;
+  padding: 16px 24px;
+  color: var(--color-bg-card);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+}
+
+.speech-indicator.listening {
+  border-color: var(--color-accent-coral);
+  animation: pulse-warm 1.5s infinite;
+}
+
+@keyframes pulse-warm {
+  0%, 100% { box-shadow: 0 4px 20px rgba(0,0,0,0.3), 0 0 0 0 rgba(224, 123, 107, 0.4); }
+  50% { box-shadow: 0 4px 20px rgba(0,0,0,0.3), 0 0 0 12px rgba(224, 123, 107, 0); }
+}
+
+.dialogue-box {
+  position: absolute;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  max-width: 600px;
+  background: linear-gradient(135deg, rgba(42, 37, 32, 0.98) 0%, rgba(61, 53, 45, 0.98) 100%);
+  border: 3px solid var(--color-accent-orange);
+  border-radius: 20px;
+  padding: 24px;
+  z-index: 100;
+  color: var(--color-bg-card);
+  box-shadow: 
+    0 8px 32px rgba(0,0,0,0.4),
+    inset 0 1px 0 rgba(255,255,255,0.1);
+}
+
+/* Stats panel (in-game) */
+.stats-panel {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: linear-gradient(135deg, rgba(42, 37, 32, 0.9) 0%, rgba(61, 53, 45, 0.9) 100%);
+  border: 2px solid var(--color-border);
+  border-radius: 16px;
+  padding: 16px;
+  min-width: 180px;
+  color: var(--color-bg-card);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+/* ============================================================================
+   Progress Bars
+   ============================================================================ */
+
+.progress-bar {
+  height: 8px;
+  background: var(--color-bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--color-xp-bar);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-bar-green .progress-bar-fill {
+  background: linear-gradient(90deg, var(--color-accent-green), var(--color-accent-teal));
+}
+
+.progress-bar-orange .progress-bar-fill {
+  background: linear-gradient(90deg, var(--color-accent-orange), var(--color-accent-coral));
+}
+
+/* ============================================================================
+   Folder Tree (Home Screen)
+   ============================================================================ */
+
+.folder-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+  color: var(--color-text-primary);
+}
+
+.folder-row:hover {
+  background: var(--color-bg-secondary);
+}
+
+.folder-row.expanded {
+  background: var(--color-bg-secondary);
+}
+
+.skill-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: background 0.15s;
+  color: var(--color-text-secondary);
+}
+
+.skill-row:hover {
+  background: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+}
+
+.skill-row.tracked {
+  color: var(--color-text-primary);
+}
+
+/* ============================================================================
+   Animations
+   ============================================================================ */
+
+@keyframes bounce-subtle {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes glow-warm {
+  0%, 100% { box-shadow: 0 0 8px var(--color-accent-orange); }
+  50% { box-shadow: 0 0 16px var(--color-accent-orange); }
+}
+
+.bounce-on-hover:hover {
+  animation: bounce-subtle 0.4s ease;
+}
+
+/* ============================================================================
+   Scrollbar Styling
+   ============================================================================ */
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-secondary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
