@@ -33,8 +33,9 @@ export function MicPermissionModal({
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // Stop the stream immediately - we just needed to trigger the permission
-      stream.getTracks().forEach(track => track.stop());
+      // Keep the stream reference globally so the permission stays active
+      // Store it on window so it persists
+      (window as unknown as { __micStream?: MediaStream }).__micStream = stream;
       
       // Update store and callback
       setMicPermissionStatus('granted');
@@ -43,15 +44,16 @@ export function MicPermissionModal({
       onClose();
     } catch (err) {
       console.error('Microphone permission error:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      const error = err as Error;
+      const errorName = (err as { name?: string }).name || '';
       
-      if (errorMessage.includes('Permission denied') || errorMessage.includes('NotAllowedError')) {
+      if (errorName === 'NotAllowedError' || errorName === 'PermissionDeniedError') {
         setMicPermissionStatus('denied');
-        setError('Microphone access was denied. You can still play using the text input option!');
-      } else if (errorMessage.includes('NotFoundError')) {
+        setError('Microphone access was denied. Please click the camera/mic icon in your browser\'s address bar to allow access.');
+      } else if (errorName === 'NotFoundError') {
         setError('No microphone found. Please connect a microphone or use the text input option.');
       } else {
-        setError(`Could not access microphone: ${errorMessage}`);
+        setError(`Could not access microphone: ${error.message || 'Unknown error'}`);
       }
       
       playSound('error');
@@ -152,14 +154,22 @@ export function useMicPermission() {
   const { micPermissionStatus, setMicPermissionStatus } = useGameStore();
   const [showModal, setShowModal] = useState(false);
 
-  // Check permission status on mount
+  // Check permission status on mount and sync with browser state
   useEffect(() => {
     const checkPermission = async () => {
       try {
+        // First check if we have an active mic stream (means permission was granted this session)
+        if ((window as unknown as { __micStream?: MediaStream }).__micStream) {
+          setMicPermissionStatus('granted');
+          return;
+        }
+        
         if (navigator.permissions) {
           const result = await navigator.permissions.query({ 
             name: 'microphone' as PermissionName 
           });
+          
+          console.log('Microphone permission state:', result.state);
           
           if (result.state === 'granted') {
             setMicPermissionStatus('granted');
@@ -168,6 +178,16 @@ export function useMicPermission() {
           } else {
             setMicPermissionStatus('prompt');
           }
+          
+          // Listen for permission changes
+          result.onchange = () => {
+            console.log('Microphone permission changed to:', result.state);
+            if (result.state === 'granted') {
+              setMicPermissionStatus('granted');
+            } else if (result.state === 'denied') {
+              setMicPermissionStatus('denied');
+            }
+          };
         }
       } catch (e) {
         // Permissions API not fully supported, will prompt on first use
@@ -175,10 +195,8 @@ export function useMicPermission() {
       }
     };
 
-    if (micPermissionStatus === 'unknown') {
-      checkPermission();
-    }
-  }, [micPermissionStatus, setMicPermissionStatus]);
+    checkPermission();
+  }, [setMicPermissionStatus]);
 
   const requestPermission = useCallback(() => {
     if (micPermissionStatus === 'granted') {

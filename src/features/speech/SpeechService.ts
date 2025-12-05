@@ -73,37 +73,85 @@ class WebSpeechService implements ISpeechService {
   constructor() {
     console.log('WebSpeechService constructor called');
     if (typeof window !== 'undefined') {
+      // Detect problematic browsers
+      const userAgent = navigator.userAgent.toLowerCase();
+      const isArc = userAgent.includes('arc/');
+      const isVSCodeBrowser = userAgent.includes('vscode') || window.parent !== window;
+      const isFirefox = userAgent.includes('firefox');
+      
+      if (isArc) {
+        console.warn('Arc browser detected - Web Speech API may not work properly');
+      }
+      if (isVSCodeBrowser) {
+        console.warn('VS Code embedded browser detected - Web Speech API not supported');
+      }
+      if (isFirefox) {
+        console.warn('Firefox detected - Web Speech API not supported');
+      }
+      
       const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
       console.log('SpeechRecognition API available:', !!SpeechRecognitionAPI);
       
-      if (SpeechRecognitionAPI) {
-        this.recognition = new SpeechRecognitionAPI();
-        this.recognition.continuous = false;
-        this.recognition.interimResults = true;
-        this.recognition.maxAlternatives = 3;
+      if (SpeechRecognitionAPI && !isFirefox) {
+        try {
+          this.recognition = new SpeechRecognitionAPI();
+          this.recognition.continuous = false;
+          this.recognition.interimResults = true;
+          this.recognition.maxAlternatives = 3;
 
-        this.recognition.onresult = (event: SpeechRecognitionEvent) => {
-          const result = event.results[event.results.length - 1];
-          const speechResult: SpeechResult = {
-            transcript: result[0].transcript,
-            confidence: result[0].confidence,
-            isFinal: result.isFinal,
-            alternatives: Array.from({ length: result.length - 1 }, (_, i) => ({
-              transcript: result[i + 1].transcript,
-              confidence: result[i + 1].confidence,
-            })),
+          this.recognition.onresult = (event: SpeechRecognitionEvent) => {
+            const result = event.results[event.results.length - 1];
+            const speechResult: SpeechResult = {
+              transcript: result[0].transcript,
+              confidence: result[0].confidence,
+              isFinal: result.isFinal,
+              alternatives: Array.from({ length: result.length - 1 }, (_, i) => ({
+                transcript: result[i + 1].transcript,
+                confidence: result[i + 1].confidence,
+              })),
+            };
+            this.resultCallback?.(speechResult);
           };
-          this.resultCallback?.(speechResult);
-        };
 
-        this.recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-          this.errorCallback?.(event.error);
-        };
+          this.recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+            console.error('Speech recognition error:', event.error);
+            // Translate error codes to user-friendly messages
+            let errorMessage = event.error;
+            switch (event.error) {
+              case 'not-allowed':
+                if (isArc) {
+                  errorMessage = 'Arc browser has limited speech support. Please open in Chrome: http://localhost:5173';
+                } else {
+                  errorMessage = 'Microphone access denied. Click the lock icon in your address bar to allow.';
+                }
+                break;
+              case 'no-speech':
+                errorMessage = 'No speech detected. Try speaking louder or closer to the mic.';
+                break;
+              case 'audio-capture':
+                errorMessage = 'No microphone found. Please connect a microphone.';
+                break;
+              case 'network':
+                errorMessage = 'Network error. Speech recognition requires internet (Chrome uses Google servers).';
+                break;
+              case 'aborted':
+                // This is normal when stopping, don't show error
+                return;
+              case 'service-not-allowed':
+                errorMessage = 'Speech service unavailable. Please use Chrome browser.';
+                break;
+            }
+            this.errorCallback?.(errorMessage);
+          };
 
-        this.recognition.onend = () => {
-          console.log('Speech recognition ended');
-          this.endCallback?.();
-        };
+          this.recognition.onend = () => {
+            console.log('Speech recognition ended');
+            this.endCallback?.();
+          };
+        } catch (e) {
+          console.error('Failed to initialize speech recognition:', e);
+          this.recognition = null;
+        }
       }
 
       this.synthesis = window.speechSynthesis;
@@ -131,26 +179,38 @@ class WebSpeechService implements ISpeechService {
 
   startListening(languageCode: string): void {
     if (!this.recognition) {
-      this.errorCallback?.('Speech recognition not supported in this browser');
+      console.error('Speech recognition not available');
+      this.errorCallback?.('Speech recognition not supported. Please use Chrome or Edge browser.');
       return;
     }
 
     console.log('Starting speech recognition for language:', languageCode);
     this.recognition.lang = languageCode;
+    
+    // Start speech recognition directly - mic permission should already be granted
+    // The onerror handler will catch any permission issues
     try {
       this.recognition.start();
       console.log('Speech recognition started successfully');
-    } catch (e) {
-      console.warn('Recognition start error:', e);
-      // Already started, stop and restart
-      this.recognition.stop();
-      setTimeout(() => {
-        try {
-          this.recognition?.start();
-        } catch (e2) {
-          this.errorCallback?.('Failed to start speech recognition');
-        }
-      }, 100);
+    } catch (e: unknown) {
+      const error = e as Error;
+      console.warn('Recognition start error:', error);
+      
+      if (error.message?.includes('already started')) {
+        // Already started, stop and restart
+        this.recognition.stop();
+        setTimeout(() => {
+          try {
+            this.recognition?.start();
+            console.log('Speech recognition restarted');
+          } catch (e2) {
+            console.error('Failed to restart speech recognition:', e2);
+            this.errorCallback?.('Failed to start speech recognition. Please refresh the page.');
+          }
+        }, 200);
+      } else {
+        this.errorCallback?.(`Speech recognition error: ${error.message || 'Unknown error'}`);
+      }
     }
   }
 

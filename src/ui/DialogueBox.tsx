@@ -195,7 +195,15 @@ export function DialogueBox() {
         {/* Response options */}
         {currentNode.responses && currentNode.responses.length > 0 && (
           <div className="border-t border-gray-700 pt-4">
-            <p className="text-gray-400 text-sm mb-3">Your response:</p>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-gray-400 text-sm">Your response:</p>
+              <button
+                onClick={() => setShowWriteMode(!showWriteMode)}
+                className="text-xs text-blue-400 hover:text-blue-300"
+              >
+                {showWriteMode ? '🎤 Switch to Voice' : '⌨️ Type instead'}
+              </button>
+            </div>
 
             {/* Speech input section */}
           {!showWriteMode && (
@@ -255,10 +263,21 @@ export function DialogueBox() {
                   {/* Speech error display */}
                   {speechError && (
                     <div className="bg-red-900/50 border border-red-500 p-3 rounded-lg">
-                      <p className="text-red-300 text-sm">⚠️ Microphone error: {speechError}</p>
-                      <p className="text-gray-400 text-xs mt-1">
-                        Try refreshing the page or check browser permissions
-                      </p>
+                      <p className="text-red-300 text-sm">⚠️ {speechError}</p>
+                      {speechError.includes('not-allowed') || speechError.includes('denied') ? (
+                        <div className="text-gray-400 text-xs mt-2 space-y-1">
+                          <p>To fix this:</p>
+                          <ol className="list-decimal ml-4 space-y-1">
+                            <li>Click the 🔒 or ℹ️ icon in your browser's address bar</li>
+                            <li>Find "Microphone" and set it to "Allow"</li>
+                            <li>Refresh the page</li>
+                          </ol>
+                        </div>
+                      ) : (
+                        <p className="text-gray-400 text-xs mt-1">
+                          Try clicking the speak button again
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -266,7 +285,10 @@ export function DialogueBox() {
                   {!isListening && !lastSpokenText && !speechError && (
                     <div className="text-xs text-gray-500 text-center space-y-1">
                       {micPermissionStatus === 'denied' ? (
-                        <p className="text-red-400">❌ Microphone access denied. Please enable it in browser settings.</p>
+                        <div className="text-red-400">
+                          <p>❌ Microphone access denied.</p>
+                          <p className="text-gray-400 mt-1">Click 🔒 in the address bar → Microphone → Allow</p>
+                        </div>
                       ) : micPermissionStatus === 'unknown' || micPermissionStatus === 'prompt' ? (
                         <p>💡 Click the button and allow microphone access when prompted</p>
                       ) : (
@@ -319,9 +341,24 @@ export function DialogueBox() {
                   )}
                 </div>
               ) : (
-                <p className="text-yellow-400">
-                  Speech recognition not supported in this browser.
-                </p>
+                <div className="bg-yellow-900/30 border border-yellow-600 p-4 rounded-lg">
+                  <p className="text-yellow-400 font-medium mb-2">
+                    🎤 Speech recognition not available
+                  </p>
+                  <p className="text-gray-400 text-sm mb-3">
+                    Your browser doesn't support voice input. For the best experience:
+                  </p>
+                  <ul className="text-gray-400 text-sm list-disc ml-4 mb-3 space-y-1">
+                    <li>Open <span className="text-white">http://localhost:5173</span> in <strong className="text-white">Chrome</strong></li>
+                    <li>Arc, Firefox, and VS Code's browser don't support speech</li>
+                  </ul>
+                  <button
+                    onClick={() => setShowWriteMode(true)}
+                    className="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-medium"
+                  >
+                    ⌨️ Use Text Input Instead
+                  </button>
+                </div>
               )}
             </div>
           )}

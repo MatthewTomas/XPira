@@ -36,10 +36,12 @@ export function useSpeechRecognition() {
   }, [setSupported, setTranscript, setError, setListening]);
 
   const startListening = useCallback(() => {
+    // Clear any previous errors and transcripts
     reset();
+    setError(null);
     setListening(true);
     getSpeechService().startListening(targetLanguage.speechRecognitionCode);
-  }, [targetLanguage.speechRecognitionCode, reset, setListening]);
+  }, [targetLanguage.speechRecognitionCode, reset, setListening, setError]);
 
   const stopListening = useCallback(() => {
     setListening(false);

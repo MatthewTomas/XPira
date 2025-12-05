@@ -181,3 +181,233 @@ Transform language learning RPG into **Xpira** (xpira.gg) - a universal life ski
 - Audio mode MVP: Languages only (proven model)
 - Monetization: Free tier (limited skills) + Premium (unlimited + integrations + AI)
 - Anti-addiction: Real-world activity unlocks game time, not vice versa
+
+---
+
+## 2025-01-XX: Backend Architecture & Freemium Model
+
+### Philosophy
+XPira prioritizes **real learning over engagement metrics**. No streaks, no dark patterns. 
+The game incentivizes learners to:
+1. Actually learn the material
+2. Apply it in real-world contexts
+3. Graduate to real conversations and experiences
+
+### Freemium Model
+
+#### Free Tier (Scripted NPC Mode)
+- **Marketplace NPCs**: Pre-scripted dialogue trees with vocabulary focus
+- **Speech Recognition**: Web Speech API for pronunciation practice
+- **Skill Book System**: Hand-curated lessons with structured progression
+- **Constraints**: Limited daily interactions, fixed conversation paths
+- **Cost to Operate**: ~$0 (all client-side)
+
+#### Pro Tier ($X/month - Stripe)
+- **AI-Powered NPCs**: GPT-4o-mini for dynamic, contextual conversations
+- **Voice Input**: Whisper API for robust speech-to-text (~$0.006/min)
+- **Unlimited Practice**: No interaction caps
+- **Cultural Context**: AI adapts to situation, provides corrections
+- **Cost to Operate**: ~$0.01-0.02 per conversation turn
+
+### Tech Stack (Scale-Ready, Zero-Cost-to-Start)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        FRONTEND                                  │
+│   React 19 + TypeScript + Vite → Vercel (free tier)             │
+│   Zustand (client state) + Supabase SDK                         │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      SUPABASE (Backend)                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│  │    Auth      │  │   Postgres   │  │ Edge Funcs   │          │
+│  │  (free tier) │  │  (500MB free)│  │ (pay-per-use)│          │
+│  └──────────────┘  └──────────────┘  └──────────────┘          │
+│                           │                   │                  │
+│                           ▼                   │                  │
+│                    Row Level Security         │                  │
+│                    (auth.uid() checks)        │                  │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼ (Pro tier only)
+┌─────────────────────────────────────────────────────────────────┐
+│                      EXTERNAL APIs                               │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│  │   OpenAI     │  │   Stripe     │  │  (Future)    │          │
+│  │ GPT + Whisper│  │   Payments   │  │ Apple Health │          │
+│  └──────────────┘  └──────────────┘  └──────────────┘          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Database Schema (Supabase Postgres)
+
+```sql
+-- Core user identity (syncs with Supabase Auth)
+CREATE TABLE profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id),
+  username TEXT UNIQUE,
+  display_name TEXT,
+  target_language TEXT DEFAULT 'spanish',
+  subscription_tier TEXT DEFAULT 'free' CHECK (tier IN ('free', 'pro')),
+  stripe_customer_id TEXT,
+  stripe_subscription_id TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Skill progress (persisted from client)
+CREATE TABLE skill_progress (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  skill_id TEXT NOT NULL,  -- e.g., 'languages.spanish.vocabulary'
+  xp INTEGER DEFAULT 0,
+  level INTEGER DEFAULT 1,
+  last_practiced TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, skill_id)
+);
+
+-- Vocabulary mastery (spaced repetition ready)
+CREATE TABLE vocabulary (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  word TEXT NOT NULL,
+  translation TEXT,
+  language TEXT NOT NULL,
+  times_correct INTEGER DEFAULT 0,
+  times_seen INTEGER DEFAULT 0,
+  next_review TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(user_id, word, language)
+);
+
+-- AI conversation logs (Pro tier only)
+CREATE TABLE conversations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  npc_id TEXT NOT NULL,
+  messages JSONB DEFAULT '[]',  -- Array of {role, content, timestamp}
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Real-world activity tracking (future)
+CREATE TABLE activities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  skill_id TEXT NOT NULL,
+  activity_type TEXT NOT NULL,  -- 'practice', 'real_world', 'verified'
+  xp_earned INTEGER,
+  metadata JSONB,  -- GPS, photo proof, etc.
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Row Level Security
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE skill_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vocabulary ENABLE ROW LEVEL SECURITY;
+ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE activities ENABLE ROW LEVEL SECURITY;
+
+-- Users can only access their own data
+CREATE POLICY "Users own their profiles" ON profiles
+  FOR ALL USING (auth.uid() = id);
+CREATE POLICY "Users own their skills" ON skill_progress
+  FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users own their vocabulary" ON vocabulary
+  FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users own their conversations" ON conversations
+  FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "Users own their activities" ON activities
+  FOR ALL USING (auth.uid() = user_id);
+```
+
+### Supabase Edge Functions
+
+```
+/functions
+├── ai-dialogue/           # GPT-4o-mini for Pro tier NPC conversations
+│   └── index.ts          # POST: { message, npcContext, conversationId }
+├── whisper-transcribe/    # Whisper API for robust speech-to-text
+│   └── index.ts          # POST: audio blob → text
+├── stripe-webhook/        # Handle subscription events
+│   └── index.ts          # Updates profiles.subscription_tier
+└── sync-progress/         # Batch sync client state to server
+    └── index.ts          # POST: { skills, vocabulary, activities }
+```
+
+### Auth Flow
+
+```
+1. User opens XPira → lands on HomeScreen
+2. Free play: No auth required, localStorage only
+3. "Sign Up" → Supabase Auth (email/password or OAuth)
+4. On sign-in: Merge localStorage state → Supabase
+5. Pro upgrade: Stripe Checkout → webhook → update tier
+6. Tier check: profiles.subscription_tier === 'pro'
+```
+
+### Mobile Strategy (Future)
+
+**Capacitor** wraps the existing React web app for iOS/Android:
+- Same codebase, native distribution
+- Native plugins for: Speech (more reliable than Web Speech), Health integrations, Push notifications
+- Build once, deploy to web + App Store + Play Store
+
+**Timeline**: Web-only for MVP. Mobile after validation.
+**Note**: iOS development deferred (employment restriction).
+
+### Cost Analysis
+
+| Component | Free Tier | Pro User (active) |
+|-----------|-----------|-------------------|
+| Vercel | $0 | $0 |
+| Supabase | $0 (500MB) | ~$0.01/user/mo |
+| OpenAI (GPT-4o-mini) | $0 | ~$0.15/1M tokens |
+| OpenAI (Whisper) | $0 | $0.006/min |
+| Stripe | 0% | 2.9% + $0.30/tx |
+
+**Break-even**: ~5-10 active Pro users covers infrastructure.
+
+### Implementation Priority
+
+1. ✅ Core game loop (movement, NPCs, dialogue)
+2. 🔄 Scripted NPC dialogue trees (free tier MVP)
+3. ⏳ Supabase setup (auth, database, RLS)
+4. ⏳ Stripe integration (Pro subscriptions)
+5. ⏳ AI Edge Function (GPT-4o-mini dialogue)
+6. ⏳ Whisper Edge Function (robust transcription)
+7. ⏳ Skill Book content creation
+8. ⏳ Mobile (Capacitor) after web validation
+
+---
+
+## 2025-01-XX: Bug Fixes
+
+### Movement Controls Freezing
+**Problem**: Keyboard handlers captured stale state due to closures.
+**Solution**: Added refs (`playerPosRef`, `currentBuildingRef`, etc.) that update 
+via `useEffect` and are read by keyboard handlers.
+
+### Marketplace NPC Speech Not Working
+**Problem**: `DialogueBox` component wasn't rendered in `Marketplace2D.tsx`.
+**Solution**: Added `<DialogueBox />` to Marketplace2D JSX.
+
+### Home Walls Not Blocking Player
+**Problem**: Wall generation logic had gaps and incorrect boundaries.
+**Solution**: Rebuilt wall system with:
+- Exterior walls with door opening at entrance
+- Interior wall at y=5 separating upstairs/hallway
+- Vertical walls between rooms with doorways
+- Proper collision detection in movement handler
+
+### Web Speech API Browser Compatibility
+**Problem**: Arc Browser, Firefox, and VS Code Simple Browser don't support Web Speech API.
+**Solution**: 
+- Added browser detection in `SpeechService.ts`
+- Show clear error messages with browser recommendations
+- Added "Type instead" fallback option
+- Safari works but has buzzing on stop (needs mic stream cleanup)
+
+---
