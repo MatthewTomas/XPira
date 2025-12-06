@@ -94,7 +94,7 @@ export function onAuthStateChange(callback: (user: User | null) => void) {
 // PROFILE HELPERS
 // ============================================================================
 
-export type SubscriptionTier = 'free' | 'pro'
+export type SubscriptionTier = 'free' | 'beta' | 'pro'
 
 export interface Profile {
   id: string

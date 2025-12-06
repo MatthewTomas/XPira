@@ -33,9 +33,10 @@ export function MicPermissionModal({
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       
-      // Keep the stream reference globally so the permission stays active
-      // Store it on window so it persists
-      (window as unknown as { __micStream?: MediaStream }).__micStream = stream;
+      // IMPORTANT: Stop the stream immediately to prevent buzzing!
+      // The permission is remembered by the browser even after stopping.
+      // Keeping the stream alive causes audio feedback/buzzing in Safari.
+      stream.getTracks().forEach(track => track.stop());
       
       // Update store and callback
       setMicPermissionStatus('granted');

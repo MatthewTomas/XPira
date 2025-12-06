@@ -55,10 +55,54 @@ export interface ISpeechService {
   speak(text: string, languageCode: string): Promise<void>;
 }
 
-// Factory function to get the appropriate speech service
+// ============================================================================
+// SPEECH SERVICE FACTORY
+// Chooses the right implementation based on user tier and browser
+// ============================================================================
+
+import { WhisperSpeechService } from './WhisperSpeechService';
+import { isSupabaseConfigured, getProfile } from '../../lib/supabase';
+
+export type SpeechServiceTier = 'free' | 'beta' | 'pro';
+
+/**
+ * Factory function to get the appropriate speech service
+ * 
+ * - Free users: Web Speech API (Chrome-only)
+ * - Beta/Pro users: Whisper API (all browsers)
+ * - Fallback: Web Speech if Whisper unavailable
+ */
+export async function createSpeechServiceForTier(tier?: SpeechServiceTier): Promise<ISpeechService> {
+  // If tier not provided, try to get from user profile
+  let userTier = tier;
+  if (!userTier && isSupabaseConfigured) {
+    try {
+      const profile = await getProfile();
+      userTier = (profile?.subscription_tier as SpeechServiceTier) || 'free';
+    } catch {
+      userTier = 'free';
+    }
+  }
+  
+  // Beta and Pro users get Whisper
+  if ((userTier === 'beta' || userTier === 'pro') && isSupabaseConfigured) {
+    console.log('SpeechFactory: Creating WhisperSpeechService for', userTier, 'user');
+    const whisper = new WhisperSpeechService();
+    if (whisper.isSupported()) {
+      return whisper;
+    }
+    console.warn('SpeechFactory: Whisper not supported, falling back to WebSpeechService');
+  }
+  
+  // Free users or fallback: Web Speech API
+  console.log('SpeechFactory: Creating WebSpeechService for', userTier || 'free', 'user');
+  return new WebSpeechService();
+}
+
+// Synchronous factory for immediate use (legacy, uses Web Speech)
 export function createSpeechService(): ISpeechService {
   // For now, always return web implementation
-  // In the future, detect platform and return appropriate service
+  // Use createSpeechServiceForTier() for tier-aware service
   return new WebSpeechService();
 }
 
@@ -69,18 +113,27 @@ class WebSpeechService implements ISpeechService {
   private resultCallback: ((result: SpeechResult) => void) | null = null;
   private errorCallback: ((error: string) => void) | null = null;
   private endCallback: (() => void) | null = null;
+  private isArcBrowser: boolean = false;
+  private isSafariBrowser: boolean = false;
+  private gotResult: boolean = false; // Track if we received any result
 
   constructor() {
     console.log('WebSpeechService constructor called');
     if (typeof window !== 'undefined') {
       // Detect problematic browsers
       const userAgent = navigator.userAgent.toLowerCase();
-      const isArc = userAgent.includes('arc/');
+      // Arc browser detection - check multiple patterns
+      // Arc may appear as "Arc/" or just have Arc somewhere in the UA
+      this.isArcBrowser = userAgent.includes('arc/') || userAgent.includes(' arc ') || /\barc\b/.test(userAgent);
+      this.isSafariBrowser = userAgent.includes('safari') && !userAgent.includes('chrome') && !userAgent.includes('chromium');
       const isVSCodeBrowser = userAgent.includes('vscode') || window.parent !== window;
       const isFirefox = userAgent.includes('firefox');
       
-      if (isArc) {
-        console.warn('Arc browser detected - Web Speech API may not work properly');
+      if (this.isArcBrowser) {
+        console.warn('Arc browser detected - Web Speech API may not work properly. Text input recommended.');
+      }
+      if (this.isSafariBrowser) {
+        console.warn('Safari browser detected - Will use extra precautions for mic handling');
       }
       if (isVSCodeBrowser) {
         console.warn('VS Code embedded browser detected - Web Speech API not supported');
@@ -100,6 +153,7 @@ class WebSpeechService implements ISpeechService {
           this.recognition.maxAlternatives = 3;
 
           this.recognition.onresult = (event: SpeechRecognitionEvent) => {
+            this.gotResult = true; // Mark that we got a result
             const result = event.results[event.results.length - 1];
             const speechResult: SpeechResult = {
               transcript: result[0].transcript,
@@ -111,6 +165,13 @@ class WebSpeechService implements ISpeechService {
               })),
             };
             this.resultCallback?.(speechResult);
+            
+            // IMPORTANT: When we get a final result, explicitly stop recognition
+            // This prevents Safari from keeping the mic open and causing buzzing
+            if (result.isFinal && this.recognition) {
+              console.log('Final result received, stopping recognition');
+              this.recognition.stop();
+            }
           };
 
           this.recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
@@ -119,8 +180,8 @@ class WebSpeechService implements ISpeechService {
             let errorMessage = event.error;
             switch (event.error) {
               case 'not-allowed':
-                if (isArc) {
-                  errorMessage = 'Arc browser has limited speech support. Please open in Chrome: http://localhost:5173';
+                if (this.isArcBrowser) {
+                  errorMessage = 'Arc browser has limited speech support. Please open in Chrome/Safari, or use text input.';
                 } else {
                   errorMessage = 'Microphone access denied. Click the lock icon in your address bar to allow.';
                 }
@@ -132,7 +193,11 @@ class WebSpeechService implements ISpeechService {
                 errorMessage = 'No microphone found. Please connect a microphone.';
                 break;
               case 'network':
-                errorMessage = 'Network error. Speech recognition requires internet (Chrome uses Google servers).';
+                if (this.isArcBrowser) {
+                  errorMessage = "Arc browser blocks Google's speech servers for privacy. Use the text input below, or open in Chrome/Safari for voice.";
+                } else {
+                  errorMessage = 'Speech recognition requires internet connection. Use the "Type instead" option for offline practice.';
+                }
                 break;
               case 'aborted':
                 // This is normal when stopping, don't show error
@@ -145,7 +210,15 @@ class WebSpeechService implements ISpeechService {
           };
 
           this.recognition.onend = () => {
-            console.log('Speech recognition ended');
+            console.log('Speech recognition ended, gotResult:', this.gotResult);
+            
+            // If recognition ended but we never got a result or error,
+            // it's likely a silent failure (common in Arc browser)
+            if (!this.gotResult) {
+              console.warn('Recognition ended with no result - possible browser issue');
+              this.errorCallback?.('Speech recognition failed silently. This browser may block speech services. Try typing your response instead.');
+            }
+            
             this.endCallback?.();
           };
         } catch (e) {
@@ -184,6 +257,15 @@ class WebSpeechService implements ISpeechService {
       return;
     }
 
+    // IMPORTANT: Cancel any ongoing speech synthesis before listening
+    // This prevents audio feedback/buzzing in Safari where the mic picks up the speaker
+    if (this.synthesis) {
+      this.synthesis.cancel();
+    }
+    
+    // Reset result tracking
+    this.gotResult = false;
+
     console.log('Starting speech recognition for language:', languageCode);
     this.recognition.lang = languageCode;
     
@@ -216,7 +298,25 @@ class WebSpeechService implements ISpeechService {
 
   stopListening(): void {
     console.log('Stopping speech recognition');
-    this.recognition?.stop();
+    
+    // Cancel any speech synthesis to prevent audio feedback
+    if (this.synthesis) {
+      this.synthesis.cancel();
+    }
+    
+    // For Safari, we need to be more aggressive about stopping
+    if (this.recognition) {
+      try {
+        // Try abort first (more forceful than stop)
+        if ('abort' in this.recognition) {
+          (this.recognition as unknown as { abort: () => void }).abort();
+        } else {
+          this.recognition.stop();
+        }
+      } catch (e) {
+        console.warn('Error stopping recognition:', e);
+      }
+    }
   }
 
   onResult(callback: (result: SpeechResult) => void): void {

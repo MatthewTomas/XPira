@@ -38,10 +38,41 @@ export function DialogueBox() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const lastNodeIdRef = useRef<string | null>(null);
 
+  // Detect problematic browsers and default to text mode
+  const userAgentLower = typeof navigator !== 'undefined' ? navigator.userAgent.toLowerCase() : '';
+  
+  // Safari detection: has 'safari' but not 'chrome' or 'chromium'
+  const isSafari = userAgentLower.includes('safari') && !userAgentLower.includes('chrome') && !userAgentLower.includes('chromium');
+  
+  const isProblematicBrowser = typeof navigator !== 'undefined' && (
+    userAgentLower.includes('arc/') || 
+    userAgentLower.includes(' arc ') ||
+    /\barc\b/.test(userAgentLower) ||
+    userAgentLower.includes('firefox') ||
+    isSafari ||  // Safari has severe buzzing/freezing issues with Web Speech API
+    !isSupported
+  );
+
+  // Log user agent for debugging Arc detection
+  useEffect(() => {
+    if (typeof navigator !== 'undefined') {
+      console.log('User Agent:', navigator.userAgent);
+      console.log('Is Safari:', isSafari);
+      console.log('Is problematic browser:', isProblematicBrowser);
+    }
+  }, [isProblematicBrowser, isSafari]);
+
+  // Auto-enable write mode for unsupported browsers
+  useEffect(() => {
+    if (isProblematicBrowser && !showWriteMode) {
+      setShowWriteMode(true);
+    }
+  }, [isProblematicBrowser, showWriteMode]);
+
   // Debug logging
   useEffect(() => {
-    console.log('DialogueBox state:', { isActive, currentNode: currentNode?.id, isSupported, isListening, transcript });
-  }, [isActive, currentNode, isSupported, isListening, transcript]);
+    console.log('DialogueBox state:', { isActive, currentNode: currentNode?.id, isSupported, isListening, transcript, isProblematicBrowser });
+  }, [isActive, currentNode, isSupported, isListening, transcript, isProblematicBrowser]);
 
   // Auto-speak NPC dialogue when node changes
   useEffect(() => {
@@ -195,14 +226,28 @@ export function DialogueBox() {
         {/* Response options */}
         {currentNode.responses && currentNode.responses.length > 0 && (
           <div className="border-t border-gray-700 pt-4">
+            {/* Browser compatibility notice */}
+            {isProblematicBrowser && (
+              <div className="mb-3 bg-amber-900/30 border border-amber-600/50 rounded-lg px-3 py-2">
+                <p className="text-amber-400 text-xs">
+                  {isSafari 
+                    ? "⚠️ Safari has audio issues with speech recognition. Using text mode for best experience."
+                    : "⚠️ Voice input unavailable in this browser. Using text mode."
+                  }
+                  <span className="text-amber-500/70"> For voice, open in Chrome.</span>
+                </p>
+              </div>
+            )}
             <div className="flex items-center justify-between mb-3">
               <p className="text-gray-400 text-sm">Your response:</p>
-              <button
-                onClick={() => setShowWriteMode(!showWriteMode)}
-                className="text-xs text-blue-400 hover:text-blue-300"
-              >
-                {showWriteMode ? '🎤 Switch to Voice' : '⌨️ Type instead'}
-              </button>
+              {!isProblematicBrowser && (
+                <button
+                  onClick={() => setShowWriteMode(!showWriteMode)}
+                  className="text-xs text-blue-400 hover:text-blue-300"
+                >
+                  {showWriteMode ? '🎤 Switch to Voice' : '⌨️ Type instead'}
+                </button>
+              )}
             </div>
 
             {/* Speech input section */}
